@@ -11,7 +11,8 @@
 %%
 
 tipo { return TK_TIPO; }
-[<>,=+!/] { return yytext[0]; }
+:= { return TK_ATRIB; }
+[:<>,=+!/] { return yytext[0]; }
 [{}a-z_][a-zA-Z0-9_]* { return TK_VAR; }
 [ \n\r\t]
 . { return TK_ER; }
