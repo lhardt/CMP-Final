@@ -22,8 +22,6 @@ LEXSRC:= $(wildcard $(SRCDIR)/*.l)
 LEXOBJ:= $(LEXSRC:$(SRCDIR)/%.l=$(SRCDIR)/%.yy.c)
 
 SRC 	:= $(wildcard $(SRCDIR)/*.c) $(LEXOBJ)
-MAIN 	:= $(SRCDIR)/main.c
-MAINO 	:= $(OBJDIR)/main.o
 TARGET 	:= $(BINDIR)/main
 # -lXXX vai procurar um arquivo com nome libXXX.a
 LIB		:= $(wildcard $(LIBDIR)/*.o) $(wildcard $(LIBDIR)/*.a)
@@ -56,5 +54,5 @@ $(LEXOBJ): $(LEXSRC)
 	flex --outfile=$(LEXOBJ) $(@:$(SRCDIR)/%.yy.c=$(SRCDIR)/%.l)
 
 $(TARGET) : $(OBJ)
-	$(CC) -o $(TARGET) $(OBJ) $(LIB)
+	$(CC) -o $(TARGET) $^ $(LIB)
 
