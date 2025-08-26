@@ -21,7 +21,7 @@ enquanto { return TK_ENQUANTO; }
 com { return TK_COM; }
 
 
-[>][=] { return TK_OC_GE; } 
+[>][=] { return TK_OC_GE; }
 [<][=] { return TK_OC_LE; }
 [=][=] { return TK_OC_EQ; }
 [!][=] { return TK_OC_NE; }
@@ -30,6 +30,16 @@ com { return TK_COM; }
 
 
 \/\/[^\n]*
+[\;] { return (int) yytext[0]; }
+[(] { return (int) yytext[0]; }
+[*] { return (int) yytext[0]; }
+[)] { return (int) yytext[0]; }
+[-] { return (int) yytext[0]; }
+[%] { return (int) yytext[0]; }
+[[] { return (int) yytext[0]; }
+[]] { return (int) yytext[0]; }
+[&] { return (int) yytext[0]; }
+[|] { return (int) yytext[0]; }
 [!:<>,=+!/] { return (int) yytext[0]; }
 [{}a-z_][a-zA-Z0-9_]* { return TK_VAR; }
 
