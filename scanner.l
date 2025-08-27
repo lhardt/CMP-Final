@@ -41,7 +41,7 @@ com { return TK_COM; }
 [&] { return (int) yytext[0]; }
 [|] { return (int) yytext[0]; }
 [!:<>,=+!/] { return (int) yytext[0]; }
-[{}a-z_][a-zA-Z0-9_]* { return TK_VAR; }
+[{}a-z_][a-zA-Z0-9_]* { return TK_ID; }
 
 
 [0-9]*\.[0-9][0-9]* { return TK_LI_DECIMAL; }

@@ -1,58 +1,34 @@
-# --------------------
-# Comandos
-# --------------------
-# o sinal de menos significa "se der erro, ignora e não para"
-# ou seja, quando ele não conseguir deletar um arquivo (já
-# deletado, ou não gerado), ele ignora.
-RM 		:= -rm
-CC 		:= gcc
-# --------------------
-# Pastas
-# --------------------
-SRCDIR 	:= src
-OBJDIR 	:= obj
-BINDIR 	:= bin
-INCDIR  := inc
-LIBDIR  := lib
-# --------------------
-# Arquivos
-# --------------------
+RM   := rm -f
+CC   := gcc
+FLEX := flex
 
-LEXSRC:= $(wildcard $(SRCDIR)/*.l)
-LEXOBJ:= $(LEXSRC:$(SRCDIR)/%.l=$(SRCDIR)/%.yy.c)
+C_SRC   := main.c
+LEX_SRC := scanner.l
+LEX_C   := scanner.yy.c
+OBJ     := main.o scanner.yy.o
+TARGET  := etapa1
 
-SRC 	:= $(wildcard $(SRCDIR)/*.c) $(LEXOBJ)
-TARGET 	:= $(BINDIR)/main
-# -lXXX vai procurar um arquivo com nome libXXX.a
-LIB		:= $(wildcard $(LIBDIR)/*.o) $(wildcard $(LIBDIR)/*.a)
-OBJ 	:= $(SRC:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
-# --------------------
-# Flags para o compilador
-# --------------------
-# Sobre as flags utilizadas: I é para a diretiva #include encontrar arquivos em
-# tal pasta. -Wall pede todos os avisos (Warning:all) e -g ajuda no debugger
-# porque preserva o número da linha de código.
-CFLAGS 	:= -Iinc -Wall -g -Wno-unused-function
-TSTFLAG :=
+CFLAGS  := -Wall -g -Wno-unused-function
 LNKFLAG := -fsanitize=address,undefined
-
-# --------------------
-# Regras de compilação
-# --------------------
 
 all: $(TARGET)
 
+# Gerar lexer com flex
+$(LEX_C): $(LEX_SRC)
+	$(FLEX) -o $@ $<
+
+# Compilar objetos
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Linkar executável final
+$(TARGET): $(OBJ)
+	$(CC) $(OBJ) -o $@ $(LNKFLAG)
+
+# Limpeza
 clean:
-	$(RM) $(OBJ) $(LEXOBJ)
+	$(RM) $(OBJ) $(LEX_C) $(TARGET)
 
-obj/%.o: src/%.c
-	$(CC)  $(CFLAGS) -c $(@:$(OBJDIR)/%.o=$(SRCDIR)/%.c) -o $@
 
-# usar option noyyrwap
-# usar option yylineno
-$(LEXOBJ): $(LEXSRC)
-	flex --outfile=$(LEXOBJ) $(@:$(SRCDIR)/%.yy.c=$(SRCDIR)/%.l)
-
-$(TARGET) : $(OBJ)
-	$(CC) -o $(TARGET) $^ $(LIB)
+.PHONY: all clean tar
 
