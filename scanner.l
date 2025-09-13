@@ -1,7 +1,7 @@
 
 /* Only multiline comments work. */
 %{ 
-  #include "tokens.h"
+  #include "parser.tab.h"
 %}
 
 %option noyywrap
