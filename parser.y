@@ -6,29 +6,6 @@
 #include "asd.h"
 int yylex(void);
 void yyerror(const char *mensagem);
-
-asd_tree_t* asd_make(char * nome){
-  asd_tree_t* node = asd_new(nome);
-  return node;
-}
-asd_tree_t* asd_make1(char * nome, asd_tree_t * c1){
-  asd_tree_t* node = asd_new(nome);
-  asd_add_child(node, c1);
-  return node;
-}
-asd_tree_t* asd_make2(char * nome, asd_tree_t * c1, asd_tree_t * c2){
-  asd_tree_t* node = asd_new(nome);
-  asd_add_child(node, c1);
-  asd_add_child(node, c2);
-  return node;
-}
-asd_tree_t* asd_make3(char * nome, asd_tree_t * c1, asd_tree_t * c2, asd_tree_t *c3){
-  asd_tree_t* node = asd_new(nome);
-  asd_add_child(node, c1);
-  asd_add_child(node, c2);
-  asd_add_child(node, c3);
-  return node;
-}
 %}
 
 %define parse.error verbose
