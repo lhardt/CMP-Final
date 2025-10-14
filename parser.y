@@ -156,7 +156,7 @@ parametro
 declaracao_variavel
     : TK_VAR TK_ID TK_ATRIB tipo inicializacao_opt {
       if($5){
-        $$ = asd_new($3.value);
+        $$ = asd_new("com"); /* TODO REVIEW DOCS */
         asd_add_child($$, asd_new($2.value));
         asd_add_child($$, $5);
       } else {
