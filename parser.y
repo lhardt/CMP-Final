@@ -6,16 +6,20 @@
 #include "asd.h"
 int yylex(void);
 void yyerror(const char *mensagem);
+
+asd_tree_t* make_binop(asd_tree_t * lhs, valor_lexico_t op, asd_tree_t * rhs){
+  asd_tree_t * root = asd_new(op.value);
+  asd_add_child(root, lhs);
+  asd_add_child(root, rhs);
+  free(op.value);
+  return root;
+}
 %}
 
 %define parse.error verbose
 
 %union {
-  struct valor_lexico {
-    int line_no;
-    int type;
-    char* value;
-  } valor_lexico;
+  valor_lexico_t valor_lexico;
   asd_tree_t * asd_tree_t;
 
 }
@@ -24,6 +28,11 @@ void yyerror(const char *mensagem);
 %code requires {
 #include "asd.h"
 extern asd_tree_t * arvore;
+typedef struct valor_lexico {
+  int line_no;
+  int type;
+  char* value;
+} valor_lexico_t;
 }
 
 %type <asd_tree_t> programa lista_elementos  definicao_funcao tipo lista_parametros  parametro declaracao_variavel declaracao_variavel_sem_init inicializacao_opt literal comando bloco lista_comandos atribuicao chamada_funcao lista_argumentos_opt lista_argumentos comando_retorna comando_se comando_enquanto expressao expressao_or
@@ -65,20 +74,20 @@ programa
       free($2.value);
     }
     | /* vazio */ { 
-      $$ = asd_new("programa_vazio"); arvore = $$;
+      $$ = asd_new("programa_vazio");
+      arvore = $$;
     }
     ;
 
 lista_elementos
-    : /* vazio */ { $$ = asd_new("lista_vazia"); } 
-    | declaracao_variavel_sem_init ',' lista_elementos {
-      asd_free($1);
+    : declaracao_variavel_sem_init ',' lista_elementos {
+      if($1) asd_free($1);
       free($2.value);
       $$ = $3;
     } 
     | definicao_funcao ',' lista_elementos {
+      if($1 && $3) asd_add_child($1, $3);
       $$ = $1;
-      if( $$ && $1) asd_add_child($$, $3);
       free($2.value);
     } 
     | declaracao_variavel_sem_init { $$ = NULL; } 
@@ -93,7 +102,7 @@ definicao_funcao
 
       free($1.value);
       free($2.value);
-      asd_add_child($$, $3);
+      asd_free($3);
       free($4.value);
       if( $5 ) asd_add_child($$, $5);
     } 
@@ -102,33 +111,34 @@ definicao_funcao
 
       free($1.value);
       free($2.value);
-      asd_add_child($$, $3);
+      asd_free($3);
       free($4.value);
-      asd_add_child($$, $5);
+      if($5) asd_add_child($$, $5);
       free($6.value);
-      asd_add_child($$, $7);
+      if($7) asd_add_child($$, $7);
     }
     | TK_ID TK_SETA tipo lista_parametros TK_ATRIB bloco { 
       $$ = asd_new($1.value);
 
       free($1.value);
       free($2.value);
-      asd_add_child($$, $3);
+      asd_free($3);
       asd_add_child($$, $4);
       free($5.value);
-      asd_add_child($$, $6);
+      if($6) asd_add_child($$, $6);
     }
     ;
 
 tipo 
-    : TK_DECIMAL { $$ = NULL;  free($1.value);  /* unused */ } 
-    | TK_INTEIRO { $$ = NULL;  free($1.value);  /* unused */ } 
+    : TK_DECIMAL { $$ = asd_new($1.value);  free($1.value); } 
+    | TK_INTEIRO { $$ = asd_new($1.value);  free($1.value); } 
     ;
 
 lista_parametros
     : parametro { $$ = $1; } 
     | parametro ',' lista_parametros {
       $$ = $1;
+      free($2.value);
       if( $1 && $3 ) asd_add_child($$, $3);
     } 
     ;
@@ -138,20 +148,25 @@ parametro
       free($1.value);
       free($2.value);
       if($3) asd_free($3);
+      $$ = NULL;
       // unused
     } 
     ;
 
 declaracao_variavel
     : TK_VAR TK_ID TK_ATRIB tipo inicializacao_opt {
-      $$ = asd_new($3.value);
-      asd_add_child($$, asd_new($2.value));
+      if($5){
+        $$ = asd_new($3.value);
+        asd_add_child($$, asd_new($2.value));
+        asd_add_child($$, $5);
+      } else {
+        $$ = NULL;
+      }
 
       free($1.value);
       free($2.value);
       free($3.value);
-      if($4) asd_free($4);
-      asd_add_child($$, $5);
+      asd_free($4);
     }
     ;
 
@@ -200,8 +215,14 @@ bloco
 lista_comandos
     : /* vazio */ { $$ = NULL; } 
     | comando lista_comandos {
-      $$ = $1;
-      if($1 && $2) asd_add_child($$, $2);
+      if($1 && $2){
+        asd_add_child($1, $2);
+        $$ = $1;
+      } else if($1) {
+        $$ = $1;
+      } else {
+        $$ = $2;
+      }
     } 
     ;
 
@@ -224,6 +245,7 @@ chamada_funcao
       strcat(buf, $1.value);
 
       $$ = asd_new(buf);
+      if( $3 ) asd_add_child($$, $3);
 
       free(buf);
       free($1.value);
@@ -240,8 +262,14 @@ lista_argumentos_opt
 lista_argumentos
     : expressao { $$ = $1; } 
     | expressao ',' lista_argumentos {
-      $$ = $1;
-      if( $$ && $1 ) asd_add_child($$, $3);
+      if( $1 && $3 ){
+        asd_add_child($1, $3);
+        $$ = $1;
+      } else if( $1 ){
+        $$ = $1;
+      } else if( $3 ){
+        $$ = $3;
+      }
       free($2.value);
     } 
     ;
@@ -253,7 +281,7 @@ comando_retorna
         free($1.value);
         asd_add_child($$, $2);
         free($3.value);
-        free($4);
+        asd_free($4);
       } 
     ;
 
@@ -308,104 +336,39 @@ expressao
     ;
 
 expressao_or
-    : expressao_or '|' expressao_and {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    } 
-    | expressao_and { $$ = $1; } 
+    : expressao_or '|' expressao_and { $$ = make_binop($1, $2, $3); } 
+    | expressao_and { $$ = $1; /* acima não deveriam ser 2 expressões OR? */ } 
     ;
 
 expressao_and
-    : expressao_and '&' expressao_igualdade {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    } 
+    : expressao_and '&' expressao_igualdade { $$ = make_binop($1, $2, $3); } 
     | expressao_igualdade { $$ = $1; } 
     ;
 
 expressao_igualdade
-    : expressao_igualdade TK_OC_EQ expressao_relacional {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    } 
-    | expressao_igualdade TK_OC_NE expressao_relacional {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    }
+    : expressao_igualdade TK_OC_EQ expressao_relacional { $$ = make_binop($1, $2, $3); }
+    | expressao_igualdade TK_OC_NE expressao_relacional { $$ = make_binop($1, $2, $3); }
     | expressao_relacional { $$ = $1; } 
     ;
 
 expressao_relacional
-    : expressao_relacional '<' expressao_aditiva {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    } 
-    | expressao_relacional '>' expressao_aditiva {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    }
-    | expressao_relacional TK_OC_LE expressao_aditiva {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    }
-    | expressao_relacional TK_OC_GE expressao_aditiva {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    }
+    : expressao_relacional '<' expressao_aditiva { $$ = make_binop($1, $2, $3); }
+    | expressao_relacional '>' expressao_aditiva { $$ = make_binop($1, $2, $3); }
+    | expressao_relacional TK_OC_LE expressao_aditiva { $$ = make_binop($1, $2, $3); }
+    | expressao_relacional TK_OC_GE expressao_aditiva { $$ = make_binop($1, $2, $3); }
     | expressao_aditiva { $$ = $1; } 
     ;
 
 expressao_aditiva
-    : expressao_aditiva '+' expressao_multiplicativa {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    } 
-    | expressao_aditiva '-' expressao_multiplicativa {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    } 
-    | expressao_multiplicativa { $$ = $1; } 
+    : expressao_aditiva '+' expressao_multiplicativa { $$ = make_binop($1, $2, $3); }
+    | expressao_aditiva '-' expressao_multiplicativa { $$ = make_binop($1, $2, $3); }
+    | expressao_multiplicativa { $$ = $1; }
     ;
 
 expressao_multiplicativa
-    : expressao_multiplicativa '*' expressao_unaria {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    }
-    | expressao_multiplicativa '/' expressao_unaria {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    }
-    | expressao_multiplicativa '%' expressao_unaria {
-      $$ = asd_new($2.value);
-      asd_add_child($$, $1);
-      asd_add_child($$, $3);
-      free($2.value);
-    } 
+    : expressao_multiplicativa '*' expressao_unaria { $$ = make_binop($1, $2, $3); }
+    | expressao_multiplicativa '/' expressao_unaria { $$ = make_binop($1, $2, $3); }
+    | expressao_multiplicativa '%' expressao_unaria { $$ = make_binop($1, $2, $3); }
     | expressao_unaria { $$ = $1; } ;
 
 expressao_unaria
@@ -428,7 +391,7 @@ expressao_unaria
 
 expressao_primaria
     : '(' expressao ')' { $$ = $2; free($1.value); free($3.value); } 
-    | chamada_funcao { $$ = asd_new("heyoh"); } 
+    | chamada_funcao { $$ = $1; } 
     | TK_ID { $$ = asd_new($1.value); free($1.value); } 
     | literal { $$ = $1; } 
     ;
