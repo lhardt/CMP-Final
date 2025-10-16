@@ -68,7 +68,7 @@ typedef struct valor_lexico {
 %%
 
 programa
-    : lista_elementos ';' {
+    : escopo_ini lista_elementos escopo_fim ';' {
       $$ = $1;
       arvore = $$;
       free($2.value);
@@ -78,6 +78,15 @@ programa
       arvore = $$;
     }
     ;
+
+escopo_ini: ;{
+          /*
+          1.cria tabela vazia
+          2.empilha tabela
+          type(escopo_ini) = tabela
+          */
+          }
+escopo_fim: ;{}
 
 lista_elementos
     : declaracao_variavel_sem_init ',' lista_elementos {
@@ -95,7 +104,12 @@ lista_elementos
     ;
 
 definicao_funcao
-    : TK_ID TK_SETA tipo TK_ATRIB bloco { 
+    /* tenho que inserir a função e o tipo dela no escopo global, implementar talvez um novo não terminal que faça isso
+      bloco_funcao tem que ser um tipo de bloco especial que NÃO cria e fecha escopos.
+        p.q. senão, quando tu cria uma função, ia ser criado um escopo que inclui os parametros e depois mais um escopo pro
+        bloco do corpo da função, quando na verdade, a gente quer que esse seja um escopo só
+    */
+    : TK_ID TK_SETA tipo TK_ATRIB bloco_funcao { 
       /* Listas de funções, onde cada função tem dois filhos, 
          um que é o seu primeiro comando e outro que é a próxima função; */
       $$ = asd_new($1.value);
@@ -206,6 +220,16 @@ comando
 
 bloco
     : '[' lista_comandos ']' {
+      /* cria escopo */
+      $$ = $2;
+      free($1.value);
+      free($3.value);
+    } 
+    ;
+
+bloco_funcao 
+    : '[' lista_comandos ']' {
+      // não cria escopo
       $$ = $2;
       free($1.value);
       free($3.value);
