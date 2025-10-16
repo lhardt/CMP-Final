@@ -2,7 +2,18 @@
 /* Only multiline comments work. */
 %{ 
   #include "parser.tab.h"
+  #include "asd.h"
+
+  int make_val(int type) {
+    yylval.valor_lexico = (struct valor_lexico) {
+      .line_no = yylineno,
+        .type = type,
+        .value = strdup(yytext)
+    };
+    return type;
+  }
 %}
+
 
 %option noyywrap
 %option yylineno
@@ -10,46 +21,46 @@
 /* Tries to get a match in the order below. Last element should be the error return */
 %%
 
-tipo { return TK_TIPO; }
-var { return TK_VAR; }
-senao { return TK_SENAO; }
-decimal { return TK_DECIMAL; }
-se { return TK_SE; }
-inteiro { return TK_INTEIRO; }
-retorna { return TK_RETORNA; }
-enquanto { return TK_ENQUANTO; }
-com { return TK_COM; }
+tipo { return make_val( TK_TIPO ); }
+var { return make_val( TK_VAR ); }
+senao { return make_val( TK_SENAO ); }
+decimal { return make_val(TK_DECIMAL); }
+se { return make_val(TK_SE); }
+inteiro { return make_val(TK_INTEIRO); }
+retorna { return make_val(TK_RETORNA); }
+enquanto { return make_val(TK_ENQUANTO); }
+com { return make_val(TK_COM); }
 
 
-[>][=] { return TK_OC_GE; }
-[<][=] { return TK_OC_LE; }
-[=][=] { return TK_OC_EQ; }
-[!][=] { return TK_OC_NE; }
-[:][=] { return TK_ATRIB; }
-[-][>] { return TK_SETA; }
+[>][=] { return make_val(TK_OC_GE); }
+[<][=] { return make_val(TK_OC_LE); }
+[=][=] { return make_val(TK_OC_EQ); }
+[!][=] { return make_val(TK_OC_NE); }
+[:][=] { return make_val(TK_ATRIB); }
+[-][>] { return make_val(TK_SETA); }
 
 
 \/\/[^\n]*
-[\;] { return (int) yytext[0]; }
-[(] { return (int) yytext[0]; }
-[*] { return (int) yytext[0]; }
-[)] { return (int) yytext[0]; }
-[-] { return (int) yytext[0]; }
-[%] { return (int) yytext[0]; }
-[[] { return (int) yytext[0]; }
-[]] { return (int) yytext[0]; }
-[&] { return (int) yytext[0]; }
-[|] { return (int) yytext[0]; }
-[!:<>,=+!/] { return (int) yytext[0]; }
-[{}a-z_][a-zA-Z0-9_]* { return TK_ID; }
+[\;] { return make_val( (int) yytext[0] ); }
+[(] { return make_val( (int) yytext[0] ); }
+[*] { return make_val( (int) yytext[0] ); }
+[)] { return make_val( (int) yytext[0] ); }
+[-] { return make_val( (int) yytext[0] ); }
+[%] { return make_val( (int) yytext[0] ); }
+[[] { return make_val( (int) yytext[0] ); }
+[]] { return make_val( (int) yytext[0] ); }
+[&] { return make_val( (int) yytext[0] ); }
+[|] { return make_val( (int) yytext[0] ); }
+[!:<>,=+!/] { return make_val( (int) yytext[0] ); }
+[{}a-z_][a-zA-Z0-9_]* { return make_val(TK_ID); }
 
 
-[0-9]*\.[0-9][0-9]* { return TK_LI_DECIMAL; }
-[0-9][0-9]* { return TK_LI_INTEIRO; }
+[0-9]*\.[0-9][0-9]* { return make_val(TK_LI_DECIMAL); }
+[0-9][0-9]* { return make_val(TK_LI_INTEIRO); }
 
 
 [ \n\r\t]
-. { return TK_ER; }
+. { return make_val(TK_ER); }
 
 %%
 

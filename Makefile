@@ -2,15 +2,15 @@ RM      := rm -f
 CC      := gcc
 FLEX    := flex
 BISON   := bison
-C_SRC   := main.c
+C_SRC   := main.c asd.c
 LEX_SRC := scanner.l
 YACC_SRC := parser.y
 LEX_C   := scanner.yy.c
 YACC_C  := parser.tab.c
 YACC_H  := parser.tab.h
-OBJ     := main.o scanner.yy.o parser.tab.o
-TARGET  := etapa2
-CFLAGS  := -Wall -g -Wno-unused-function
+OBJ     := main.o scanner.yy.o parser.tab.o asd.o
+TARGET  := etapa3
+CFLAGS  := -Wall -g -Wno-unused-function -fsanitize=address,undefined
 LNKFLAG := -fsanitize=address,undefined
 
 all: $(TARGET)
