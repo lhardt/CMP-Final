@@ -4,6 +4,8 @@
 #include <string.h>
 #include "parser.tab.h"
 #include "asd.h"
+#include "symbol_table.h"
+#include "semantic.h"
 int yylex(void);
 void yyerror(const char *mensagem);
 
@@ -14,6 +16,8 @@ asd_tree_t* make_binop(asd_tree_t * lhs, valor_lexico_t op, asd_tree_t * rhs){
   free(op.value);
   return root;
 }
+
+char* current_function_name = NULL;
 %}
 
 %define parse.error verbose
@@ -27,7 +31,9 @@ asd_tree_t* make_binop(asd_tree_t * lhs, valor_lexico_t op, asd_tree_t * rhs){
 
 %code requires {
 #include "asd.h"
+#include "semantic.h"
 extern asd_tree_t * arvore;
+extern scope_stack_t *global_scope_stack ;
 typedef struct valor_lexico {
   int line_no;
   int type;
@@ -35,7 +41,7 @@ typedef struct valor_lexico {
 } valor_lexico_t;
 }
 
-%type <asd_tree_t> programa lista_elementos  definicao_funcao tipo lista_parametros  parametro declaracao_variavel declaracao_variavel_sem_init inicializacao_opt literal comando bloco lista_comandos atribuicao chamada_funcao lista_argumentos_opt lista_argumentos comando_retorna comando_se comando_enquanto expressao expressao_or
+%type <asd_tree_t> programa lista_elementos  definicao_funcao tipo lista_parametros  parametro declaracao_variavel declaracao_variavel_sem_init inicializacao_opt literal comando bloco cabecalho_funcao bloco_funcao declaracao_funcao lista_comandos atribuicao chamada_funcao lista_argumentos_opt lista_argumentos comando_retorna comando_se comando_enquanto expressao expressao_or
 %type <asd_tree_t> expressao_and expressao_igualdade expressao_relacional expressao_aditiva expressao_multiplicativa expressao_primaria expressao_unaria
 
 /* Declaração dos tokens */
@@ -68,10 +74,10 @@ typedef struct valor_lexico {
 %%
 
 programa
-    : escopo_ini lista_elementos escopo_fim ';' {
-      $$ = $1;
+    : semantic_init lista_elementos semantic_finish ';' {
+      $$ = $2;
       arvore = $$;
-      free($2.value);
+      free($4.value);
     }
     | /* vazio */ { 
       $$ = asd_new("programa_vazio");
@@ -79,14 +85,16 @@ programa
     }
     ;
 
-escopo_ini: ;{
+semantic_init: {semantic_init();};
+semantic_finish: { semantic_finish(); };
+escopo_ini: {
           /*
           1.cria tabela vazia
           2.empilha tabela
           type(escopo_ini) = tabela
           */
-          }
-escopo_fim: ;{}
+          };
+escopo_fim: {  };
 
 lista_elementos
     : declaracao_variavel_sem_init ',' lista_elementos {
@@ -103,49 +111,65 @@ lista_elementos
     | definicao_funcao { $$ = $1; } 
     ;
 
+
+declaracao_funcao:TK_ID TK_SETA tipo{
+              semantic_declare_function($1.value, $3->tipo, $1.line_no);
+              current_function_name = strdup($1.value);
+              $$ = asd_new($1.value);
+              free($1.value);
+              free($2.value);
+              asd_free($3);
+                 };
+
+cabecalho_funcao
+    : declaracao_funcao TK_ATRIB {
+        semantic_push_scope();
+        
+        $$ = $1;
+        //$$->tipo = $3->tipo;
+        
+        free($2.value);
+    }
+    | declaracao_funcao TK_COM lista_parametros TK_ATRIB {
+        // current_function_type = $3->tipo;
+        semantic_push_scope();
+        $$=$1;
+        free($2.value);
+        asd_free($3);
+        free($4.value);
+    }
+   | declaracao_funcao lista_parametros TK_ATRIB {
+        semantic_push_scope();
+        
+        
+        $$ = $1;
+        //$$->tipo = $3->tipo;
+        
+        asd_free($2);
+        free($3.value);
+    }
+    ;
+    ;
+
 definicao_funcao
     /* tenho que inserir a função e o tipo dela no escopo global, implementar talvez um novo não terminal que faça isso
       bloco_funcao tem que ser um tipo de bloco especial que NÃO cria e fecha escopos.
         p.q. senão, quando tu cria uma função, ia ser criado um escopo que inclui os parametros e depois mais um escopo pro
         bloco do corpo da função, quando na verdade, a gente quer que esse seja um escopo só
     */
-    : TK_ID TK_SETA tipo TK_ATRIB bloco_funcao { 
-      /* Listas de funções, onde cada função tem dois filhos, 
-         um que é o seu primeiro comando e outro que é a próxima função; */
-      $$ = asd_new($1.value);
-
-      free($1.value);
-      free($2.value);
-      asd_free($3);
-      free($4.value);
-      if( $5 ) asd_add_child($$, $5);
-    } 
-    | TK_ID TK_SETA tipo TK_COM lista_parametros TK_ATRIB bloco { 
-      $$ = asd_new($1.value);
-
-      free($1.value);
-      free($2.value);
-      asd_free($3);
-      free($4.value);
-      if($5) asd_add_child($$, $5);
-      free($6.value);
-      if($7) asd_add_child($$, $7);
-    }
-    | TK_ID TK_SETA tipo lista_parametros TK_ATRIB bloco { 
-      $$ = asd_new($1.value);
-
-      free($1.value);
-      free($2.value);
-      asd_free($3);
-      asd_add_child($$, $4);
-      free($5.value);
-      if($6) asd_add_child($$, $6);
+    :cabecalho_funcao bloco_funcao { 
+       $$ = $1;
+        if($2) asd_add_child($$, $2);
+        semantic_pop_scope();
+        free(current_function_name);
+        current_function_name = NULL;
     }
     ;
+    
 
 tipo 
-    : TK_DECIMAL { $$ = asd_new($1.value);  free($1.value); } 
-    | TK_INTEIRO { $$ = asd_new($1.value);  free($1.value); } 
+    : TK_DECIMAL { $$ = asd_new($1.value); $$->tipo=TIPO_FLOAT;  free($1.value); } 
+    | TK_INTEIRO { $$ = asd_new($1.value); $$->tipo=TIPO_INT; free($1.value); } 
     ;
 
 lista_parametros
@@ -159,10 +183,13 @@ lista_parametros
 
 parametro
     : TK_ID TK_ATRIB tipo { 
+      //$$ = NULL;
+      $$=asd_new($1.value);
+      $$->tipo=$3->tipo;
+       semantic_add_function_parameter(scope_stack_curr_lookup(&global_scope_stack), current_function_name,$3->tipo);
       free($1.value);
       free($2.value);
       if($3) asd_free($3);
-      $$ = NULL;
       // unused
     } 
     ;

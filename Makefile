@@ -2,14 +2,26 @@ RM      := rm -f
 CC      := gcc
 FLEX    := flex
 BISON   := bison
-C_SRC   := main.c asd.c
+
+# Arquivos fonte C
+C_SRC   := main.c asd.c semantic.c symbol_table.c
+
+# Arquivos fonte Flex/Bison
 LEX_SRC := scanner.l
 YACC_SRC := parser.y
+
+# Arquivos gerados
 LEX_C   := scanner.yy.c
 YACC_C  := parser.tab.c
 YACC_H  := parser.tab.h
-OBJ     := main.o scanner.yy.o parser.tab.o asd.o
-TARGET  := etapa3
+
+# Objetos: todos os .c viram .o
+OBJ     := main.o scanner.yy.o parser.tab.o asd.o semantic.o symbol_table.o
+
+# Nome do executável
+TARGET  := etapa4
+
+# Flags de compilação e linking
 CFLAGS  := -Wall -g -Wno-unused-function -fsanitize=address,undefined
 LNKFLAG := -fsanitize=address,undefined
 
@@ -23,16 +35,28 @@ $(YACC_C) $(YACC_H): $(YACC_SRC)
 $(LEX_C): $(LEX_SRC) $(YACC_H)
 	$(FLEX) -o $@ $<
 
-# Compilar main.c (precisa do parser.tab.h)
-main.o: main.c $(YACC_H)
+# Compilar main.c (precisa do parser.tab.h e headers)
+main.o: main.c $(YACC_H) asd.h
 	$(CC) $(CFLAGS) -c main.c -o main.o
 
-# Compilar parser.tab.c
-parser.tab.o: $(YACC_C)
+# Compilar asd.c (precisa dos headers)
+asd.o: asd.c asd.h symbol_table.h
+	$(CC) $(CFLAGS) -c asd.c -o asd.o
+
+# Compilar symbol_table.c
+symbol_table.o: symbol_table.c symbol_table.h
+	$(CC) $(CFLAGS) -c symbol_table.c -o symbol_table.o
+
+# Compilar semantic.c (precisa de symbol_table.h e errors.h)
+semantic.o: semantic.c semantic.h symbol_table.h errors.h
+	$(CC) $(CFLAGS) -c semantic.c -o semantic.o
+
+# Compilar parser.tab.c (precisa de semantic.h e symbol_table.h)
+parser.tab.o: $(YACC_C) $(YACC_H) asd.h semantic.h symbol_table.h
 	$(CC) $(CFLAGS) -c $(YACC_C) -o parser.tab.o
 
 # Compilar scanner.yy.c
-scanner.yy.o: $(LEX_C)
+scanner.yy.o: $(LEX_C) $(YACC_H)
 	$(CC) $(CFLAGS) -c $(LEX_C) -o scanner.yy.o
 
 # Linkar executável final
@@ -41,8 +65,9 @@ $(TARGET): $(OBJ)
 
 # Limpeza
 clean:
-	$(RM) $(OBJ) $(LEX_C) $(YACC_C) $(YACC_H) $(TARGET)
+	$(RM) $(OBJ) $(LEX_C) $(YACC_C) $(YACC_H) $(TARGET) parser.output
 
+# Diretório de testes
 TESTDIR := testfiles
 TESTFILES := $(wildcard $(TESTDIR)/*)
 
@@ -53,7 +78,7 @@ test: $(TARGET)
 		if ./$(TARGET) < $$f > /dev/null 2>&1; then \
 			echo "   [OK] $$f"; \
 		else \
-			echo "   [FAIL] $$f"; \
+			echo "   [FAIL] $$f (código: $$?)"; \
 		fi \
 	done
 
@@ -69,10 +94,10 @@ test-detailed: $(TARGET)
 		echo; \
 		echo "--- Resultado:"; \
 		if ./$(TARGET) < $$f; then \
-			echo "    [OK] Análise sintática passou (código: $$?)"; \
+			echo "    [OK] Análise passou (código: $$?)"; \
 		else \
 			EXIT_CODE=$$?; \
-			echo "    [FAIL] Análise sintática falhou (código: $$EXIT_CODE)"; \
+			echo "    [FAIL] Análise falhou (código: $$EXIT_CODE)"; \
 		fi; \
 	done
 	@echo "======================================"
@@ -89,10 +114,21 @@ test-single: $(TARGET)
 	@echo
 	@echo "--- Resultado da análise:"
 	@if ./$(TARGET) < $(FILE); then \
-		echo " [OK] Análise sintática passou"; \
+		echo " [OK] Análise passou"; \
 	else \
 		EXIT_CODE=$$?; \
-		echo " [FAIL] Análise sintática falhou (código: $$EXIT_CODE)"; \
+		echo " [FAIL] Análise falhou (código: $$EXIT_CODE)"; \
+		case $$EXIT_CODE in \
+			10) echo "     Erro: Identificador não declarado (ERR_UNDECLARED)";; \
+			11) echo "     Erro: Identificador já declarado (ERR_DECLARED)";; \
+			20) echo "     Erro: Variável usada como função (ERR_VARIABLE)";; \
+			21) echo "     Erro: Função usada como variável (ERR_FUNCTION)";; \
+			30) echo "     Erro: Tipos incompatíveis (ERR_WRONG_TYPE)";; \
+			40) echo "     Erro: Argumentos faltando (ERR_MISSING_ARGS)";; \
+			41) echo "     Erro: Argumentos em excesso (ERR_EXCESS_ARGS)";; \
+			42) echo "     Erro: Tipo de argumento incorreto (ERR_WRONG_TYPE_ARGS)";; \
+			*) echo "     Erro desconhecido";; \
+		esac; \
 	fi
 
 # Debug de um arquivo específico - mostra tokens + parse
@@ -106,7 +142,7 @@ debug: $(TARGET)
 	@cat $(FILE)
 	@echo
 	@echo "--- Análise completa:"
-	@./$(TARGET) < $(FILE)
+	@./$(TARGET) < $(FILE) 2>&1
 
 # Teste com diferentes categorias
 test-categorized: $(TARGET)
@@ -120,9 +156,10 @@ test-categorized: $(TARGET)
 				*) \
 					printf "%-35s: " "$$(basename $$f)"; \
 					if ./$(TARGET) < $$f > /dev/null 2>&1; then \
-						echo "PASSOU"; \
+						echo "✓ PASSOU"; \
 					else \
-						echo "FALHOU (deveria passar)"; \
+						EXIT_CODE=$$?; \
+						echo "✗ FALHOU (código: $$EXIT_CODE, deveria passar)"; \
 					fi; \
 					;; \
 			esac; \
@@ -134,11 +171,67 @@ test-categorized: $(TARGET)
 		if [ -f "$$f" ]; then \
 			printf "%-35s: " "$$(basename $$f)"; \
 			if ./$(TARGET) < $$f > /dev/null 2>&1; then \
-				echo "PASSOU (deveria falhar)"; \
+				echo "✗ PASSOU (deveria falhar)"; \
 			else \
-				echo "FALHOU como esperado"; \
+				EXIT_CODE=$$?; \
+				echo "✓ FALHOU como esperado (código: $$EXIT_CODE)"; \
 			fi; \
 		fi; \
 	done
 
-.PHONY: all clean test test-detailed test-single debug test-categorized
+# Teste de memória com valgrind (se disponível)
+test-memory: $(TARGET)
+	@if command -v valgrind > /dev/null 2>&1; then \
+		echo ">> Testando vazamento de memória com valgrind..."; \
+		for f in $(TESTDIR)/*.txt; do \
+			if [ -f "$$f" ]; then \
+				echo "Testando: $$f"; \
+				valgrind --leak-check=full --error-exitcode=1 ./$(TARGET) < $$f > /dev/null 2>&1; \
+				if [ $$? -eq 0 ]; then \
+					echo "  ✓ Sem vazamento de memória"; \
+				else \
+					echo "  ✗ Vazamento detectado!"; \
+				fi; \
+			fi; \
+		done; \
+	else \
+		echo "valgrind não encontrado, pulando teste de memória"; \
+		echo "Instalação: sudo apt-get install valgrind (Ubuntu/Debian)"; \
+	fi
+
+# Gera relatório de conflitos do bison
+conflicts: $(YACC_SRC)
+	$(BISON) -d -o $(YACC_C) --report=all $(YACC_SRC)
+	@if [ -f parser.output ]; then \
+		echo ">> Relatório de conflitos gerado em parser.output"; \
+		grep -E "(conflict|Conflict)" parser.output || echo "Nenhum conflito encontrado!"; \
+	fi
+
+# Mostra estatísticas do código
+stats:
+	@echo ">> Estatísticas do projeto:"
+	@echo "Linhas de código C:"
+	@wc -l $(C_SRC) | tail -n 1
+	@echo "Linhas de código Flex:"
+	@wc -l $(LEX_SRC)
+	@echo "Linhas de código Bison:"
+	@wc -l $(YACC_SRC)
+	@echo "Total de headers:"
+	@ls -1 *.h 2>/dev/null | wc -l
+
+# Help - mostra comandos disponíveis
+help:
+	@echo "Comandos disponíveis:"
+	@echo "  make              - Compila o projeto"
+	@echo "  make clean        - Remove arquivos gerados"
+	@echo "  make test         - Roda todos os testes"
+	@echo "  make test-detailed - Roda testes com saída detalhada"
+	@echo "  make test-single FILE=arquivo - Testa um arquivo específico"
+	@echo "  make debug FILE=arquivo - Debug detalhado de um arquivo"
+	@echo "  make test-categorized - Testes organizados por categoria"
+	@echo "  make test-memory  - Testa vazamento de memória (requer valgrind)"
+	@echo "  make conflicts    - Gera relatório de conflitos do parser"
+	@echo "  make stats        - Mostra estatísticas do código"
+	@echo "  make help         - Mostra esta mensagem"
+
+.PHONY: all clean test test-detailed test-single debug test-categorized test-memory conflicts stats help
