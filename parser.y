@@ -13,10 +13,13 @@ asd_tree_t* make_binop(asd_tree_t * lhs, valor_lexico_t op, asd_tree_t * rhs){
   asd_tree_t * root = asd_new(op.value);
   asd_add_child(root, lhs);
   asd_add_child(root, rhs);
+  
+  // Inferência de tipo para operação binária
+  root->tipo = semantic_infer_type(lhs->tipo, rhs->tipo, op.line_no);
+  
   free(op.value);
   return root;
 }
-
 char* current_function_name = NULL;
 %}
 
@@ -93,8 +96,11 @@ escopo_ini: {
           2.empilha tabela
           type(escopo_ini) = tabela
           */
+          semantic_push_scope();
           };
-escopo_fim: {  };
+escopo_fim: {
+          semantic_pop_scope();
+          };
 
 lista_elementos
     : declaracao_variavel_sem_init ',' lista_elementos {
@@ -112,9 +118,10 @@ lista_elementos
     ;
 
 
-declaracao_funcao:TK_ID TK_SETA tipo{
+declaracao_funcao: TK_ID TK_SETA tipo{
               semantic_declare_function($1.value, $3->tipo, $1.line_no);
               current_function_name = strdup($1.value);
+              semantic_push_scope();
               $$ = asd_new($1.value);
               free($1.value);
               free($2.value);
@@ -123,8 +130,6 @@ declaracao_funcao:TK_ID TK_SETA tipo{
 
 cabecalho_funcao
     : declaracao_funcao TK_ATRIB {
-        semantic_push_scope();
-        
         $$ = $1;
         //$$->tipo = $3->tipo;
         
@@ -132,16 +137,12 @@ cabecalho_funcao
     }
     | declaracao_funcao TK_COM lista_parametros TK_ATRIB {
         // current_function_type = $3->tipo;
-        semantic_push_scope();
         $$=$1;
         free($2.value);
         asd_free($3);
         free($4.value);
     }
    | declaracao_funcao lista_parametros TK_ATRIB {
-        semantic_push_scope();
-        
-        
         $$ = $1;
         //$$->tipo = $3->tipo;
         
@@ -186,7 +187,8 @@ parametro
       //$$ = NULL;
       $$=asd_new($1.value);
       $$->tipo=$3->tipo;
-       semantic_add_function_parameter(scope_stack_curr_lookup(&global_scope_stack), current_function_name,$3->tipo);
+       semantic_add_function_parameter(global_scope_stack, current_function_name,$3->tipo);
+      semantic_declare_variable($1.value,$3->tipo,$1.line_no,NULL);
       free($1.value);
       free($2.value);
       if($3) asd_free($3);
@@ -198,10 +200,13 @@ declaracao_variavel
     : TK_VAR TK_ID TK_ATRIB tipo inicializacao_opt {
       if($5){
         $$ = asd_new("com"); /* TODO REVIEW DOCS */
+        semantic_check_attribution($4->tipo, $5->tipo, $1.line_no);
+        semantic_declare_variable($2.value,$4->tipo,$1.line_no,$5->label);
         asd_add_child($$, asd_new($2.value));
         asd_add_child($$, $5);
       } else {
         $$ = NULL;
+        semantic_declare_variable($2.value,$4->tipo,$1.line_no,NULL);
       }
 
       free($1.value);
@@ -213,6 +218,7 @@ declaracao_variavel
 
 declaracao_variavel_sem_init
     : TK_VAR TK_ID TK_ATRIB tipo {
+      semantic_declare_variable($2.value,$4->tipo,$1.line_no,NULL);
       $$ = NULL;
 
       free($1.value);
@@ -231,8 +237,8 @@ inicializacao_opt
     ;
 
 literal
-    : TK_LI_INTEIRO { $$ = asd_new($1.value); free($1.value); } 
-    | TK_LI_DECIMAL { $$ = asd_new($1.value); free($1.value); } 
+    : TK_LI_INTEIRO { $$ = asd_new($1.value); $$->tipo=TIPO_INT; free($1.value); } 
+    | TK_LI_DECIMAL { $$ = asd_new($1.value); $$->tipo=TIPO_FLOAT; free($1.value); } 
     ;
 
 comando
@@ -279,6 +285,11 @@ lista_comandos
 
 atribuicao
     : TK_ID TK_ATRIB expressao {
+      semantic_check_variable_usage($1.value, $1.line_no);
+      symbol_entry_t *var = scope_stack_lookup(global_scope_stack, $1.value);
+      
+      // Verifica compatibilidade de tipos
+      semantic_check_attribution(var->tipo, $3->tipo, $1.line_no);
       $$ = asd_new($2.value); 
       
       asd_add_child( $$, asd_new($1.value) );
@@ -291,11 +302,30 @@ atribuicao
 
 chamada_funcao
     : TK_ID '(' lista_argumentos_opt ')' {
+      semantic_check_function_usage($1.value, $1.line_no);
+      symbol_entry_t *func = scope_stack_lookup(global_scope_stack, $1.value);
+
+      // Cria lista de tipos dos argumentos fornecidos
+      arg_list_t *args_chamada = NULL;
+      asd_tree_t *arg_node = $3;
+      while (arg_node) {
+        arg_list_append(&args_chamada, arg_node->tipo);
+        if (arg_node->number_of_children > 0)
+          arg_node = arg_node->children[0];
+        else
+          break;
+      }
+      
+      // Verifica argumentos
+      semantic_check_function_call($1.value, args_chamada, $1.line_no);
+      arg_list_free(args_chamada);
+
       char* buf = calloc( strlen($1.value) + strlen("call ") + 1, sizeof(char));
       strcat(buf, "call ");
       strcat(buf, $1.value);
 
       $$ = asd_new(buf);
+      $$->tipo = func->tipo;
       if( $3 ) asd_add_child($$, $3);
 
       free(buf);
@@ -329,6 +359,11 @@ comando_retorna
     : TK_RETORNA expressao TK_ATRIB tipo {
         /* O comando return tem um filho, que é uma expressão. */
         $$ = asd_new("retorna"); 
+        //tipo de retorno deve ser compativel com o tipo da funcao
+        symbol_entry_t* func=scope_stack_lookup(global_scope_stack,current_function_name);
+        semantic_check_return(func->tipo,$2->tipo,$1.line_no);
+        semantic_check_attribution($2->tipo,$4->tipo,$1.line_no);
+        $$->tipo = $4->tipo;
         free($1.value);
         asd_add_child($$, $2);
         free($3.value);
@@ -337,34 +372,39 @@ comando_retorna
     ;
 
 comando_se
-    : TK_SE '(' expressao ')' bloco {
+    : TK_SE '(' expressao ')' escopo_ini bloco escopo_fim {
       /* O comando if com else opcional deve ter pelo 
          menos três filhos, um para a expressão, outro para 
          o primeiro comando quando verdade, e o último – 
          opcional – para o segundo comando quando falso */
       $$ = asd_new($1.value);
+      $$->tipo = $3->tipo;
       
       free($1.value);
       free($2.value);
       asd_add_child($$, $3);
       free($4.value);
-      asd_add_child($$, $5);
+      asd_add_child($$, $6);
     }
-    | TK_SE '(' expressao ')' bloco TK_SENAO bloco {
+    | TK_SE '(' expressao ')' escopo_ini bloco escopo_fim TK_SENAO escopo_ini bloco escopo_fim {
+      // qual o tipo de um bloco?
+      if ($6 && $10 && $6->tipo != TIPO_INDEFINIDO && $10->tipo != TIPO_INDEFINIDO) {
+        semantic_infer_type($6->tipo, $10->tipo, $1.line_no);
+      }
       $$ = asd_new($1.value);
       free($1.value);
       free($2.value);
       asd_add_child($$, $3);
       free($4.value);
-      asd_add_child($$, $5);
-      free($6.value);
-      asd_add_child($$, $7);
+      asd_add_child($$, $6);
+      free($8.value);
+      asd_add_child($$, $10);
 
     }
     ;
 
 comando_enquanto
-    : TK_ENQUANTO '(' expressao ')' bloco { 
+    : TK_ENQUANTO '(' expressao ')' escopo_ini bloco escopo_fim { 
       /* 
          Para os comandos de controle de fluxo, 
          deve-se utilizar como nome o lexema do 
@@ -373,11 +413,12 @@ comando_enquanto
          para o comando while. 
       */ 
       $$ = asd_new($1.value); 
+      $$->tipo = $3->tipo;
       free($1.value);
       free($2.value);
       asd_add_child($$, $3);
       free($4.value);
-      asd_add_child($$, $5);
+      asd_add_child($$, $6);
     } 
     ;
 
@@ -443,7 +484,7 @@ expressao_unaria
 expressao_primaria
     : '(' expressao ')' { $$ = $2; free($1.value); free($3.value); } 
     | chamada_funcao { $$ = $1; } 
-    | TK_ID { $$ = asd_new($1.value); free($1.value); } 
+    | TK_ID { $$ = asd_new($1.value); $$->tipo=scope_stack_lookup(global_scope_stack,$1.value)->tipo; free($1.value); } 
     | literal { $$ = $1; } 
     ;
 

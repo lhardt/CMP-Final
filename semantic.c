@@ -24,11 +24,15 @@ void semantic_finish() {
 }
 
 void semantic_push_scope() {
+  printf("COMECANDO NOVO ESCOPO\n");
     symbol_table_t *new_table = symbol_table_create(TABLE_SIZE);
     scope_stack_push(&global_scope_stack, new_table);
 }
 
 void semantic_pop_scope() {
+    printf("TERMINANDO ESCOPO\n");
+    printf("ESCOPO ANTES DE TERMINAR\n");
+    semantic_print_current_scope();
     symbol_table_t *table = scope_stack_pop(&global_scope_stack);
     if (table) {
         symbol_table_free(table);
@@ -55,6 +59,7 @@ symbol_entry_t *semantic_check_undeclared(const char *id, int linha) {
 }
 
 void semantic_declare_variable(const char *id, tipo_dado_t tipo, int linha, const char *valor) {
+    printf("declarando variavel %s\n",id);
     // Verifica se já foi declarado no escopo atual
     symbol_table_t *current_scope = global_scope_stack->table;
     if (symbol_table_lookup(current_scope, id)) {
@@ -64,6 +69,7 @@ void semantic_declare_variable(const char *id, tipo_dado_t tipo, int linha, cons
     }
     
     symbol_table_insert(current_scope, id, NATUREZA_VARIAVEL, tipo, linha, valor);
+    semantic_print_current_scope();
 }
 
 //argumentos vão sendo postos depois!
@@ -88,11 +94,11 @@ void semantic_declare_function(const char *id, tipo_dado_t tipo_retorno, int lin
     semantic_print_current_scope();
 }
 
-void semantic_add_function_parameter(symbol_table_t* curr_table,char* func_id, tipo_dado_t arg_type){
+void semantic_add_function_parameter(scope_stack_t* scope_stack,char* func_id, tipo_dado_t arg_type){
 
   printf("adicionando parametro a funcao!!\n");
 
-  symbol_entry_t* func_entry=symbol_table_lookup(curr_table, func_id);
+  symbol_entry_t* func_entry=scope_stack_lookup(scope_stack, func_id);
   if(!func_entry) return;
 
 if (!func_entry->args) {

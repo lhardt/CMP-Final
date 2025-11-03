@@ -60,12 +60,11 @@ void symbol_table_insert(symbol_table_t *table, const char *chave,
 
 // Busca um símbolo na tabela
 symbol_entry_t *symbol_table_lookup(symbol_table_t *table, const char *chave) {
-    if (!table) return NULL;
+  if (!table) return NULL;
   if(!chave){
     printf("erro chave null\n"); return NULL;
   }
     
-  printf("aehoo\n");
     unsigned int idx = hash(chave, table->size);
     symbol_entry_t *entry = table->entries[idx];
     

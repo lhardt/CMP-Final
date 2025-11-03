@@ -21,7 +21,7 @@ symbol_entry_t *semantic_check_undeclared(const char *id, int linha);
 // Declarações
 void semantic_declare_variable(const char *id, tipo_dado_t tipo, int linha, const char *valor);
 void semantic_declare_function(const char *id, tipo_dado_t tipo_retorno,int linha);
-void semantic_add_function_parameter( symbol_table_t* curr_table, char* func_id, tipo_dado_t arg_type);
+void semantic_add_function_parameter( scope_stack_t* scope_stack, char* func_id, tipo_dado_t arg_type);
 
 // Verificação de uso correto
 void semantic_check_variable_usage(const char *id, int linha);
