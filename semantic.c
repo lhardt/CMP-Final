@@ -10,7 +10,7 @@
 scope_stack_t *global_scope_stack = NULL;
 
 void semantic_init() {
-    printf("iniciando escopo\n");
+    /*printf("iniciando escopo\n");*/
     global_scope_stack = scope_stack_create();
     // Cria escopo global
     symbol_table_t *global_table = symbol_table_create(TABLE_SIZE);
@@ -18,21 +18,21 @@ void semantic_init() {
 }
 
 void semantic_finish() {
-    printf("terminando escopo\n");
+    /*printf("terminando escopo\n");*/
     scope_stack_free(global_scope_stack);
     global_scope_stack = NULL;
 }
 
 void semantic_push_scope() {
-  printf("COMECANDO NOVO ESCOPO\n");
+  /*printf("COMECANDO NOVO ESCOPO\n");*/
     symbol_table_t *new_table = symbol_table_create(TABLE_SIZE);
     scope_stack_push(&global_scope_stack, new_table);
 }
 
 void semantic_pop_scope() {
-    printf("TERMINANDO ESCOPO\n");
-    printf("ESCOPO ANTES DE TERMINAR\n");
-    semantic_print_current_scope();
+    /*printf("TERMINANDO ESCOPO\n");*/
+    /*printf("ESCOPO ANTES DE TERMINAR\n");*/
+    /*semantic_print_current_scope();*/
     symbol_table_t *table = scope_stack_pop(&global_scope_stack);
     if (table) {
         symbol_table_free(table);
@@ -44,6 +44,7 @@ void semantic_check_declared(const char *id, int linha) {
     if (entry) {
         fprintf(stderr, "Erro semântico na linha %d: identificador '%s' já foi declarado na linha %d\n",
                 linha, id, entry->linha);
+        free((char*)id);
         exit(ERR_DECLARED);
     }
 }
@@ -53,23 +54,24 @@ symbol_entry_t *semantic_check_undeclared(const char *id, int linha) {
     if (!entry) {
         fprintf(stderr, "Erro semântico na linha %d: identificador '%s' não foi declarado\n",
                 linha, id);
+        free((char*)id);
         exit(ERR_UNDECLARED);
     }
     return entry;
 }
 
 void semantic_declare_variable(const char *id, tipo_dado_t tipo, int linha, const char *valor) {
-    printf("declarando variavel %s\n",id);
     // Verifica se já foi declarado no escopo atual
     symbol_table_t *current_scope = global_scope_stack->table;
     if (symbol_table_lookup(current_scope, id)) {
         fprintf(stderr, "Erro semântico na linha %d: variável '%s' já foi declarada neste escopo\n",
                 linha, id);
+        free((char*)id);
         exit(ERR_DECLARED);
     }
     
     symbol_table_insert(current_scope, id, NATUREZA_VARIAVEL, tipo, linha, valor);
-    semantic_print_current_scope();
+    /*semantic_print_current_scope();*/
 }
 
 //argumentos vão sendo postos depois!
@@ -83,26 +85,26 @@ void semantic_declare_function(const char *id, tipo_dado_t tipo_retorno, int lin
     if (symbol_table_lookup(current->table, id)) {
         fprintf(stderr, "Erro semântico na linha %d: função '%s' já foi declarada\n",
                 linha, id);
+        free((char*)id);
         exit(ERR_DECLARED);
     }
     
-    printf("inserindo funcao %s no escopo global\n",id);
     symbol_table_insert(current->table, id, NATUREZA_FUNCAO, tipo_retorno, linha, NULL);
     /*printf("atribuindo argumentos na tabela");*/
     /*symbol_entry_t *entry = symbol_table_lookup(current->table, id);*/
     /*entry->args = args;*/
-    semantic_print_current_scope();
+    /*semantic_print_current_scope();*/
 }
 
 void semantic_add_function_parameter(scope_stack_t* scope_stack,char* func_id, tipo_dado_t arg_type){
 
-  printf("adicionando parametro a funcao!!\n");
+  /*printf("adicionando parametro a funcao!!\n");*/
 
   symbol_entry_t* func_entry=scope_stack_lookup(scope_stack, func_id);
   if(!func_entry) return;
 
 if (!func_entry->args) {
-    printf("adicionando novo\n");
+    /*printf("adicionando novo\n");*/
     func_entry->args = arg_list_create(arg_type);
   } else {
     arg_list_append(&func_entry->args, arg_type);
@@ -116,6 +118,7 @@ void semantic_check_variable_usage(const char *id, int linha) {
     if (entry->natureza == NATUREZA_FUNCAO) {
         fprintf(stderr, "Erro semântico na linha %d: '%s' é uma função e não pode ser usado como variável\n",
                 linha, id);
+        free((char*)id);
         exit(ERR_FUNCTION);
     }
 }
@@ -126,6 +129,7 @@ void semantic_check_function_usage(const char *id, int linha) {
     if (entry->natureza != NATUREZA_FUNCAO) {
         fprintf(stderr, "Erro semântico na linha %d: '%s' é uma variável e não pode ser usado como função\n",
                 linha, id);
+        free((char*)id);
         exit(ERR_VARIABLE);
     }
 }
@@ -144,11 +148,11 @@ tipo_dado_t semantic_infer_type(tipo_dado_t tipo1, tipo_dado_t tipo2, int linha)
 }
 
 void semantic_check_attribution(tipo_dado_t tipo_var, tipo_dado_t tipo_expr, int linha) {
-    if (tipo_var != tipo_expr) {
-        fprintf(stderr, "Erro semântico na linha %d: atribuição com tipos incompatíveis (%s := %s)\n",
-                linha, tipo_to_string(tipo_var), tipo_to_string(tipo_expr));
-        exit(ERR_WRONG_TYPE);
-    }
+  if (tipo_var != tipo_expr) {
+    fprintf(stderr, "Erro semântico na linha %d: atribuição com tipos incompatíveis (%s := %s)\n",
+            linha, tipo_to_string(tipo_var), tipo_to_string(tipo_expr));
+    exit(ERR_WRONG_TYPE);
+  }
 }
 
 void semantic_check_return(tipo_dado_t tipo_funcao, tipo_dado_t tipo_retorno, int linha) {
@@ -159,11 +163,19 @@ void semantic_check_return(tipo_dado_t tipo_funcao, tipo_dado_t tipo_retorno, in
     }
 }
 
+void semantic_check_condition(tipo_dado_t tipo, int linha) {
+    if (tipo != TIPO_INT) {
+        fprintf(stderr, "Erro semântico na linha %d: condição deve ser do tipo inteiro\n", linha);
+        exit(ERR_WRONG_TYPE);
+    }
+}
+
 void semantic_check_function_call(const char *id, arg_list_t *args_chamada, int linha) {
     symbol_entry_t *entry = semantic_check_undeclared(id, linha);
     
     if (entry->natureza != NATUREZA_FUNCAO) {
         fprintf(stderr, "Erro semântico na linha %d: '%s' não é uma função\n", linha, id);
+        free((char*)id);
         exit(ERR_VARIABLE);
     }
     
@@ -173,12 +185,14 @@ void semantic_check_function_call(const char *id, arg_list_t *args_chamada, int 
     if (count_fornecidos < count_esperados) {
         fprintf(stderr, "Erro semântico na linha %d: função '%s' espera %d argumentos mas recebeu %d\n",
                 linha, id, count_esperados, count_fornecidos);
+        free((char*)id);
         exit(ERR_MISSING_ARGS);
     }
     
     if (count_fornecidos > count_esperados) {
         fprintf(stderr, "Erro semântico na linha %d: função '%s' espera %d argumentos mas recebeu %d\n",
                 linha, id, count_esperados, count_fornecidos);
+        free((char*)id);
         exit(ERR_EXCESS_ARGS);
     }
     
@@ -191,6 +205,7 @@ void semantic_check_function_call(const char *id, arg_list_t *args_chamada, int 
         if (param->tipo != arg->tipo) {
             fprintf(stderr, "Erro semântico na linha %d: argumento %d de '%s' tem tipo incorreto (esperado %s, recebido %s)\n",
                     linha, pos, id, tipo_to_string(param->tipo), tipo_to_string(arg->tipo));
+            free((char*)id);
             exit(ERR_WRONG_TYPE_ARGS);
         }
         param = param->next;

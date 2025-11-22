@@ -1,2 +1,4 @@
 testfiles
 *.sh
+test_script
+*.py
