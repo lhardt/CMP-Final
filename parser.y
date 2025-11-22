@@ -376,19 +376,19 @@ comando_retorna
 
 comando_se
     : TK_SE '(' expressao ')' escopo_ini bloco escopo_fim {
-      /* O comando if com else opcional deve ter pelo 
-         menos três filhos, um para a expressão, outro para 
-         o primeiro comando quando verdade, e o último – 
+      /* O comando if com else opcional deve ter pelo
+         menos três filhos, um para a expressão, outro para
+         o primeiro comando quando verdade, e o último –
          opcional – para o segundo comando quando falso */
       semantic_check_condition($3->tipo, $1.line_no);
       $$ = asd_new($1.value);
       $$->tipo = $3->tipo;
-      
+
       free($1.value);
       free($2.value);
       asd_add_child($$, $3);
       free($4.value);
-      asd_add_child($$, $6);
+      if($6) asd_add_child($$, $6);
     }
     | TK_SE '(' expressao ')' escopo_ini bloco escopo_fim TK_SENAO escopo_ini bloco escopo_fim {
       semantic_check_condition($3->tipo, $1.line_no);
@@ -401,9 +401,9 @@ comando_se
       free($2.value);
       asd_add_child($$, $3);
       free($4.value);
-      asd_add_child($$, $6);
+      if($6) asd_add_child($$, $6);
       free($8.value);
-      asd_add_child($$, $10);
+      if($10) asd_add_child($$, $10);
 
     }
     ;
