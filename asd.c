@@ -11,6 +11,7 @@ asd_tree_t *asd_new(const char *label)
     ret->label = strdup(label);
     ret->number_of_children = 0;
     ret->children = NULL;
+    ret->tipo = TIPO_INDEFINIDO;
   }
   return ret;
 }
@@ -39,7 +40,6 @@ void asd_add_child(asd_tree_t *tree, asd_tree_t *child)
     tree->children[tree->number_of_children-1] = child;
   }else{
     printf("Erro: %s recebeu parâmetro tree = %p / %p.\n", __FUNCTION__, tree, child);
-    tree->children[-15213] = '\0';
   }
 }
 

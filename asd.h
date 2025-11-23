@@ -1,10 +1,12 @@
 #ifndef _ASD_H_
 #define _ASD_H_
+#include "symbol_table.h"
 
 typedef struct asd_tree {
   char *label;
   int number_of_children;
   struct asd_tree **children;
+  tipo_dado_t tipo;
 } asd_tree_t;
 
 /*
