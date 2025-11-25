@@ -6,6 +6,8 @@
 #include "asd.h"
 #include "symbol_table.h"
 #include "semantic.h"
+#include "iloc.h"
+
 int yylex(void);
 void yyerror(const char *mensagem);
 
@@ -20,7 +22,26 @@ asd_tree_t* make_binop(asd_tree_t * lhs, valor_lexico_t op, asd_tree_t * rhs){
   free(op.value);
   return root;
 }
+
+int curr_node_id = 1;
+asd_tree_t * make_binop_code(asd_tree_t * lhs, valor_lexico_t  label, char* op, asd_tree_t* rhs){
+  asd_tree_t *parent = make_binop(lhs, label, rhs);
+
+  parent->id = curr_node_id++;
+  int new_id = parent->id;
+  code_list_t * instructions = code_list_create();
+  code_list_add_all(instructions, lhs->instructions);
+  code_list_add_all(instructions, rhs->instructions);
+
+  char instr[256];
+  sprintf(instr,"%s r%d, r%d => r%d", op, lhs->id, rhs->id, new_id);
+  code_list_add(instructions, instr);
+  parent->instructions = instructions;
+  return parent;
+}
+
 char* current_function_name = NULL;
+
 %}
 
 %define parse.error verbose
@@ -132,7 +153,7 @@ cabecalho_funcao
     : declaracao_funcao TK_ATRIB {
         $$ = $1;
         //$$->tipo = $3->tipo;
-        
+
         free($2.value);
     }
     | declaracao_funcao TK_COM lista_parametros TK_ATRIB {
@@ -145,7 +166,7 @@ cabecalho_funcao
    | declaracao_funcao lista_parametros TK_ATRIB {
         $$ = $1;
         //$$->tipo = $3->tipo;
-        
+
         asd_free($2);
         free($3.value);
     }
@@ -159,14 +180,18 @@ definicao_funcao
         bloco do corpo da função, quando na verdade, a gente quer que esse seja um escopo só
     */
     :cabecalho_funcao bloco_funcao { 
-       $$ = $1;
-        if($2) asd_add_child($$, $2);
-        semantic_pop_scope();
-        free(current_function_name);
-        current_function_name = NULL;
+      $$ = $1;
+      if($2){
+        asd_add_child($$, $2);
+        $$->start_label = $2->start_label;
+        $$->instructions = code_list_create();
+        code_list_add_all($$->instructions, $2->instructions);
+      }
+      semantic_pop_scope();
+      free(current_function_name);
+      current_function_name = NULL;
     }
     ;
-    
 
 tipo 
     : TK_DECIMAL { $$ = asd_new($1.value); $$->tipo=TIPO_FLOAT;  free($1.value); } 
@@ -205,6 +230,15 @@ declaracao_variavel
         semantic_check_variable_usage($4->label,$1.line_no);
         asd_add_child($$, asd_new($2.value));
         asd_add_child($$, $5);
+        $$->start_label = $1.line_no;
+
+        $$->instructions = code_list_create();
+
+
+        char instr[1024];
+        sprintf(instr, "L%d:", $$->start_label);
+        code_list_add($$->instructions, instr);
+        code_list_add($$->instructions, "INSTRUCTION");
       } else {
         $$ = NULL;
         semantic_declare_variable($2.value,$4->tipo,$1.line_no,NULL);
@@ -238,7 +272,19 @@ inicializacao_opt
     ;
 
 literal
-    : TK_LI_INTEIRO { $$ = asd_new($1.value); $$->tipo=TIPO_INT; free($1.value); } 
+    : TK_LI_INTEIRO { 
+        $$ = asd_new($1.value); 
+        $$->id = curr_node_id++;
+        $$->tipo=TIPO_INT; 
+
+        $$->instructions = code_list_create();
+        char instr[256];
+        sprintf(instr, "loadI %s => r%d", $1.value, $$->id);
+        code_list_add($$->instructions, instr);
+
+        free($1.value); 
+      } 
+      // Not supported now
     | TK_LI_DECIMAL { $$ = asd_new($1.value); $$->tipo=TIPO_FLOAT; free($1.value); } 
     ;
 
@@ -276,6 +322,11 @@ lista_comandos
       if($1 && $2){
         asd_add_child($1, $2);
         $$ = $1;
+
+        if( $$->instructions == NULL)
+          $$->instructions = code_list_create();
+
+        code_list_add_all($$->instructions, $2->instructions);
       } else if($1) {
         $$ = $1;
       } else {
@@ -297,6 +348,14 @@ atribuicao
 
        asd_add_child( $$, asd_new($1.value) );
        asd_add_child( $$, $3 );
+
+      $$->instructions = code_list_create();
+
+      code_list_add_all($$->instructions, $3->instructions);
+
+      char instr[256] = {0};
+      sprintf(instr,"storeAI r%d => rfp,%d",  var->linha, $3->id);
+      code_list_add($$->instructions, instr);
 
       free($1.value);
       free($2.value);
@@ -458,14 +517,14 @@ expressao_relacional
     ;
 
 expressao_aditiva
-    : expressao_aditiva '+' expressao_multiplicativa { $$ = make_binop($1, $2, $3); }
-    | expressao_aditiva '-' expressao_multiplicativa { $$ = make_binop($1, $2, $3); }
+    : expressao_aditiva '+' expressao_multiplicativa { $$ = make_binop_code($1, $2, "add", $3); }
+    | expressao_aditiva '-' expressao_multiplicativa { $$ = make_binop_code($1, $2, "sub", $3); }
     | expressao_multiplicativa { $$ = $1; }
     ;
 
 expressao_multiplicativa
-    : expressao_multiplicativa '*' expressao_unaria { $$ = make_binop($1, $2, $3); }
-    | expressao_multiplicativa '/' expressao_unaria { $$ = make_binop($1, $2, $3); }
+    : expressao_multiplicativa '*' expressao_unaria { $$ = make_binop_code($1, $2, "mult", $3);  }
+    | expressao_multiplicativa '/' expressao_unaria { $$ = make_binop_code($1, $2, "div", $3); }
     | expressao_multiplicativa '%' expressao_unaria { $$ = make_binop($1, $2, $3); }
     | expressao_unaria { $$ = $1; } ;
 

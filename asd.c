@@ -10,6 +10,7 @@ asd_tree_t *asd_new(const char *label)
   if (ret != NULL){
     ret->label = strdup(label);
     ret->number_of_children = 0;
+    ret->start_label = 0;
     ret->children = NULL;
     ret->tipo = TIPO_INDEFINIDO;
   }
@@ -22,6 +23,9 @@ void asd_free(asd_tree_t *tree)
     int i;
     for (i = 0; i < tree->number_of_children; i++){
       asd_free(tree->children[i]);
+    }
+    if(tree->instructions){
+      code_list_free(tree->instructions);
     }
     free(tree->children);
     free(tree->label);

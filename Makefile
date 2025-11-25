@@ -4,7 +4,7 @@ FLEX    := flex
 BISON   := bison
 
 # Arquivos fonte C
-C_SRC   := main.c asd.c semantic.c symbol_table.c
+C_SRC   := main.c iloc.c asd.c semantic.c symbol_table.c
 
 # Arquivos fonte Flex/Bison
 LEX_SRC := scanner.l
@@ -16,10 +16,10 @@ YACC_C  := parser.tab.c
 YACC_H  := parser.tab.h
 
 # Objetos: todos os .c viram .o
-OBJ     := main.o scanner.yy.o parser.tab.o asd.o semantic.o symbol_table.o
+OBJ     := main.o iloc.o scanner.yy.o parser.tab.o asd.o semantic.o symbol_table.o
 
 # Nome do executável
-TARGET  := etapa4
+TARGET  := etapa5
 
 # Flags de compilação e linking
 CFLAGS  := -Wall -g -Wno-unused-function -fsanitize=address,undefined
@@ -43,6 +43,10 @@ main.o: main.c $(YACC_H) asd.h
 asd.o: asd.c asd.h symbol_table.h
 	$(CC) $(CFLAGS) -c asd.c -o asd.o
 
+
+iloc.o: iloc.c
+	$(CC) $(CFLAGS) -c iloc.c -o iloc.o
+
 # Compilar symbol_table.c
 symbol_table.o: symbol_table.c symbol_table.h
 	$(CC) $(CFLAGS) -c symbol_table.c -o symbol_table.o
@@ -52,7 +56,7 @@ semantic.o: semantic.c semantic.h symbol_table.h errors.h
 	$(CC) $(CFLAGS) -c semantic.c -o semantic.o
 
 # Compilar parser.tab.c (precisa de semantic.h e symbol_table.h)
-parser.tab.o: $(YACC_C) $(YACC_H) asd.h semantic.h symbol_table.h
+parser.tab.o: $(YACC_C) $(YACC_H) asd.h iloc.h semantic.h symbol_table.h
 	$(CC) $(CFLAGS) -c $(YACC_C) -o parser.tab.o
 
 # Compilar scanner.yy.c

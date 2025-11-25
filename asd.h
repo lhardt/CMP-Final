@@ -1,12 +1,17 @@
 #ifndef _ASD_H_
 #define _ASD_H_
 #include "symbol_table.h"
+#include "iloc.h"
 
 typedef struct asd_tree {
   char *label;
   int number_of_children;
   struct asd_tree **children;
   tipo_dado_t tipo;
+  code_list_t * instructions;
+  // First line of this block/line/etc.  This will imply a label L1234 in the final code. 0 if not valid
+  int id;
+  int start_label;
 } asd_tree_t;
 
 /*
