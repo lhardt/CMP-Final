@@ -23,6 +23,12 @@ asd_tree_t* make_binop(asd_tree_t * lhs, valor_lexico_t op, asd_tree_t * rhs){
   return root;
 }
 
+void asd_print_label(asd_tree_t * node){
+  char instr[256];
+  sprintf(instr,"L%d:", node->id);
+  code_list_add(node->instructions, instr);
+}
+
 int curr_node_id = 1;
 asd_tree_t * make_binop_code(asd_tree_t * lhs, valor_lexico_t  label, char* op, asd_tree_t* rhs){
   asd_tree_t *parent = make_binop(lhs, label, rhs);
@@ -30,13 +36,15 @@ asd_tree_t * make_binop_code(asd_tree_t * lhs, valor_lexico_t  label, char* op, 
   parent->id = curr_node_id++;
   int new_id = parent->id;
   code_list_t * instructions = code_list_create();
+  parent->instructions = instructions;
   code_list_add_all(instructions, lhs->instructions);
   code_list_add_all(instructions, rhs->instructions);
 
+  asd_print_label(parent);
+  
   char instr[256];
   sprintf(instr,"%s r%d, r%d => r%d", op, lhs->id, rhs->id, new_id);
   code_list_add(instructions, instr);
-  parent->instructions = instructions;
   return parent;
 }
 
@@ -102,6 +110,18 @@ programa
       $$ = $2;
       arvore = $$;
       free($4.value);
+
+
+      // We must guarantee there is always somewhere to jump to
+      // Two instructions to guarantee we don't do off-by-one
+      char instr[256];
+      sprintf(instr, "L%d:", curr_node_id++);
+      code_list_add($$->instructions, instr);
+      code_list_add($$->instructions, "nop");
+
+      sprintf(instr, "L%d:", curr_node_id++);
+      code_list_add($$->instructions, instr);
+      code_list_add($$->instructions, "nop");
     }
     | /* vazio */ { 
       $$ = asd_new("programa_vazio");
@@ -238,7 +258,6 @@ declaracao_variavel
         char instr[1024];
         sprintf(instr, "L%d:", $$->start_label);
         code_list_add($$->instructions, instr);
-        code_list_add($$->instructions, "INSTRUCTION");
       } else {
         $$ = NULL;
         semantic_declare_variable($2.value,$4->tipo,$1.line_no,NULL);
@@ -278,6 +297,7 @@ literal
         $$->tipo=TIPO_INT; 
 
         $$->instructions = code_list_create();
+        asd_print_label($$);
         char instr[256];
         sprintf(instr, "loadI %s => r%d", $1.value, $$->id);
         code_list_add($$->instructions, instr);
@@ -351,6 +371,7 @@ atribuicao
 
       $$->instructions = code_list_create();
 
+      asd_print_label($$);
       code_list_add_all($$->instructions, $3->instructions);
 
       char instr[256] = {0};
@@ -443,6 +464,20 @@ comando_se
       $$ = asd_new($1.value);
       $$->tipo = $3->tipo;
 
+      $$->instructions = code_list_create();
+      code_list_add_all($$->instructions, $3->instructions);
+      
+      char instr[256];
+      int inside_label = curr_node_id;
+      if( $6 != NULL ){
+        inside_label = $6->id;
+      }
+
+      int outside_label = curr_node_id+1;
+      sprintf(instr,"cbr r%d -> L%d , L%d", $3->id, inside_label, outside_label);
+      code_list_add($$->instructions , instr);
+
+
       free($1.value);
       free($2.value);
       asd_add_child($$, $3);
@@ -479,11 +514,29 @@ comando_enquanto
       semantic_check_condition($3->tipo, $1.line_no);
       $$ = asd_new($1.value); 
       $$->tipo = $3->tipo;
+
+      $$->id = curr_node_id++;
+      $$->instructions = code_list_create();
+      
+      asd_print_label($$);
+      code_list_add_all($$->instructions, $3->instructions);
+
+      char instr[256];
+
+      int inside_label = curr_node_id+1;
+      if( $6 != NULL ){
+        inside_label = $6->id;
+      }
+      int outside_label = curr_node_id+1;
+      sprintf(instr,"cbr r%d -> L%d , L%d", $3->id, inside_label, outside_label);// TODO
+      code_list_add($$->instructions, instr);
+
+
       free($1.value);
       free($2.value);
       asd_add_child($$, $3);
       free($4.value);
-      asd_add_child($$, $6);
+      if( $6 != NULL ) asd_add_child($$, $6);
     } 
     ;
 
@@ -509,10 +562,10 @@ expressao_igualdade
     ;
 
 expressao_relacional
-    : expressao_relacional '<' expressao_aditiva { $$ = make_binop($1, $2, $3); }
-    | expressao_relacional '>' expressao_aditiva { $$ = make_binop($1, $2, $3); }
-    | expressao_relacional TK_OC_LE expressao_aditiva { $$ = make_binop($1, $2, $3); }
-    | expressao_relacional TK_OC_GE expressao_aditiva { $$ = make_binop($1, $2, $3); }
+    : expressao_relacional '<' expressao_aditiva { $$ = make_binop_code($1, $2, "cmp_LT", $3); }
+    | expressao_relacional '>' expressao_aditiva { $$ = make_binop_code($1, $2, "cmp_GT", $3); }
+    | expressao_relacional TK_OC_LE expressao_aditiva { $$ = make_binop_code($1, $2, "cmp_LE", $3); }
+    | expressao_relacional TK_OC_GE expressao_aditiva { $$ = make_binop_code($1, $2, "cmp_GE", $3); }
     | expressao_aditiva { $$ = $1; } 
     ;
 
@@ -552,7 +605,15 @@ expressao_primaria
     | TK_ID {
         semantic_check_variable_usage($1.value, $1.line_no);
         $$ = asd_new($1.value);
-        $$->tipo=scope_stack_lookup(global_scope_stack,$1.value)->tipo;
+        symbol_entry_t * entry = scope_stack_lookup(global_scope_stack,$1.value);
+        $$->tipo=entry->tipo;
+
+        $$->instructions = code_list_create();
+        $$->id = curr_node_id++;
+
+        char instr[256];
+        sprintf(instr, "loadAI rfp, %d => r%d", entry->linha,  $$->id ); // TODO load da memória de fato
+        code_list_add($$->instructions, instr);
         free($1.value);
       }
     | literal { $$ = $1; }
