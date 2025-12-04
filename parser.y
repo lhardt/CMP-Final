@@ -34,21 +34,22 @@ asd_tree_t * make_binop_code(asd_tree_t * lhs, valor_lexico_t  label, char* op, 
   asd_tree_t *parent = make_binop(lhs, label, rhs);
 
   parent->id = curr_node_id++;
-  int new_id = parent->id;
-  code_list_t * instructions = code_list_create();
-  parent->instructions = instructions;
-  code_list_add_all(instructions, lhs->instructions);
-  code_list_add_all(instructions, rhs->instructions);
+  parent->instructions = code_list_create();
+  code_list_add_all(parent->instructions, lhs->instructions);
+  code_list_add_all(parent->instructions, rhs->instructions);
 
   asd_print_label(parent);
   
   char instr[256];
-  sprintf(instr,"%s r%d, r%d => r%d", op, lhs->id, rhs->id, new_id);
-  code_list_add(instructions, instr);
+  sprintf(instr,"%s r%d, r%d => r%d", op, lhs->id, rhs->id, parent->id);
+  code_list_add(parent->instructions, instr);
   return parent;
 }
 
 char* current_function_name = NULL;
+
+int curr_rbss = 0;
+int curr_rfp = 0;
 
 %}
 
@@ -114,14 +115,16 @@ programa
 
       // We must guarantee there is always somewhere to jump to
       // Two instructions to guarantee we don't do off-by-one
-      char instr[256];
-      sprintf(instr, "L%d:", curr_node_id++);
-      code_list_add($$->instructions, instr);
-      code_list_add($$->instructions, "nop");
-
-      sprintf(instr, "L%d:", curr_node_id++);
-      code_list_add($$->instructions, instr);
-      code_list_add($$->instructions, "nop");
+      if( $$ != NULL && $$->instructions != NULL ){
+        char instr[256];
+        sprintf(instr, "L%d:", curr_node_id++);
+        code_list_add($$->instructions, instr);
+        code_list_add($$->instructions, "nop");
+  
+        sprintf(instr, "L%d:", curr_node_id++);
+        code_list_add($$->instructions, instr);
+        code_list_add($$->instructions, "nop");
+      }
     }
     | /* vazio */ { 
       $$ = asd_new("programa_vazio");
@@ -244,7 +247,7 @@ parametro
 declaracao_variavel
     : TK_VAR TK_ID TK_ATRIB tipo inicializacao_opt {
       if($5){
-        $$ = asd_new("com"); /* TODO REVIEW DOCS */
+        $$ = asd_new("com");
         semantic_check_attribution($4->tipo, $5->tipo, $1.line_no);
         semantic_declare_variable($2.value,$4->tipo,$1.line_no,$5->label);
         semantic_check_variable_usage($4->label,$1.line_no);
@@ -365,17 +368,18 @@ atribuicao
 
        $$ = asd_new($2.value);
        $$->tipo = var->tipo;
+       $$->id = curr_node_id++;
 
        asd_add_child( $$, asd_new($1.value) );
        asd_add_child( $$, $3 );
 
       $$->instructions = code_list_create();
 
-      asd_print_label($$);
       code_list_add_all($$->instructions, $3->instructions);
 
       char instr[256] = {0};
-      sprintf(instr,"storeAI r%d => rfp,%d",  var->linha, $3->id);
+      asd_print_label($$);
+      sprintf(instr,"storeAI r%d => rfp,%d", $3->id,  var->linha);
       code_list_add($$->instructions, instr);
 
       free($1.value);
@@ -468,8 +472,9 @@ comando_se
       code_list_add_all($$->instructions, $3->instructions);
       
       char instr[256];
-      int inside_label = curr_node_id;
+      int inside_label = -1;
       if( $6 != NULL ){
+        code_list_add_all($$->instructions, $6->instructions);
         inside_label = $6->id;
       }
 
@@ -607,9 +612,9 @@ expressao_primaria
         $$ = asd_new($1.value);
         symbol_entry_t * entry = scope_stack_lookup(global_scope_stack,$1.value);
         $$->tipo=entry->tipo;
+        $$->id = curr_node_id++;
 
         $$->instructions = code_list_create();
-        $$->id = curr_node_id++;
 
         char instr[256];
         sprintf(instr, "loadAI rfp, %d => r%d", entry->linha,  $$->id ); // TODO load da memória de fato
