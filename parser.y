@@ -35,21 +35,23 @@ asd_tree_t * make_binop_code(asd_tree_t * lhs, valor_lexico_t  label, char* op, 
 
   parent->id = curr_node_id++;
   parent->instructions = code_list_create();
+
+  char instr[256];
+  asd_print_label(parent);
+  sprintf(instr, "nop");
+  code_list_add(parent->instructions, instr);
+
   code_list_add_all(parent->instructions, lhs->instructions);
   code_list_add_all(parent->instructions, rhs->instructions);
 
-  asd_print_label(parent);
+  //asd_print_label(parent);
   
-  char instr[256];
   sprintf(instr,"%s r%d, r%d => r%d", op, lhs->id, rhs->id, parent->id);
   code_list_add(parent->instructions, instr);
   return parent;
 }
 
 char* current_function_name = NULL;
-
-int curr_rbss = 0;
-int curr_rfp = 0;
 
 %}
 
@@ -474,13 +476,14 @@ comando_se
       char instr[256];
       int inside_label = -1;
       if( $6 != NULL ){
-        code_list_add_all($$->instructions, $6->instructions);
         inside_label = $6->id;
       }
 
       int outside_label = curr_node_id+1;
       sprintf(instr,"cbr r%d -> L%d , L%d", $3->id, inside_label, outside_label);
       code_list_add($$->instructions , instr);
+
+      code_list_add_all($$->instructions, $6->instructions);
 
 
       free($1.value);
@@ -516,6 +519,8 @@ comando_enquanto
          opcional, e o lexema do token TK_ENQUANTO 
          para o comando while. 
       */ 
+      char instr[256];
+
       semantic_check_condition($3->tipo, $1.line_no);
       $$ = asd_new($1.value); 
       $$->tipo = $3->tipo;
@@ -526,16 +531,19 @@ comando_enquanto
       asd_print_label($$);
       code_list_add_all($$->instructions, $3->instructions);
 
-      char instr[256];
 
-      int inside_label = curr_node_id+1;
+      int inside_label = $6->id;
       if( $6 != NULL ){
         inside_label = $6->id;
       }
       int outside_label = curr_node_id+1;
       sprintf(instr,"cbr r%d -> L%d , L%d", $3->id, inside_label, outside_label);// TODO
       code_list_add($$->instructions, instr);
+  
+      code_list_add_all($$->instructions, $6->instructions);
 
+      sprintf(instr,"jumpI -> L%d", $$->id);
+      code_list_add($$->instructions, instr);
 
       free($1.value);
       free($2.value);
@@ -561,8 +569,8 @@ expressao_and
     ;
 
 expressao_igualdade
-    : expressao_igualdade TK_OC_EQ expressao_relacional { $$ = make_binop($1, $2, $3); }
-    | expressao_igualdade TK_OC_NE expressao_relacional { $$ = make_binop($1, $2, $3); }
+    : expressao_igualdade TK_OC_EQ expressao_relacional { $$ = make_binop_code($1, $2, "cmp_EQ", $3); }
+    | expressao_igualdade TK_OC_NE expressao_relacional { $$ = make_binop_code($1, $2, "cmp_NE", $3); }
     | expressao_relacional { $$ = $1; } 
     ;
 

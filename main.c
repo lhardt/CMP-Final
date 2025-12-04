@@ -10,7 +10,8 @@ asd_tree_t *arvore = NULL;
 int main(int argc, char **argv) {
   int ret = yyparse();
   //asd_print_graphviz(arvore);
-  code_list_print(arvore->instructions);
+  if( arvore )
+    code_list_print(arvore->instructions);
   asd_free(arvore);
   yylex_destroy();
   return ret;
